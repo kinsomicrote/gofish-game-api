@@ -8,9 +8,14 @@ module V1
     def new_game(params)
       game = HTTParty.get('https://deckofcardsapi.com/api/deck/new/shuffle/?deck_count=1').parsed_response
       params[:players].each do |player|
-        add_to_pile({ game_id: game['deck_id'], player: player, count: 7 })
+        build_player_pile({ game_id: game['deck_id'], player: player, count: 7 })
       end
       { game_id: game['deck_id'], players: params[:players] }
+    end
+
+    def build_player_pile(params)
+      response = draw_card_from_deck({ game_id: params[:game_id], count: params[:count] })
+      add_to_pile({ game_id: params[:game_id], player: params[:player], cards: response })
     end
 
     def draw_card_from_deck(params)
@@ -19,9 +24,8 @@ module V1
     end
 
     def add_to_pile(params)
-      drawn_cards = draw_card_from_deck({ game_id: params[:game_id], count: params[:count] })
       url = "https://deckofcardsapi.com/api/deck/#{params[:game_id]}/pile/#{params[:player]}/add/?cards="
-      drawn_cards.each do |card|
+      params[:cards].each do |card|
         url = "#{url},#{card['code']}"
       end
       HTTParty.get(url)
@@ -39,6 +43,39 @@ module V1
         { rank: RANK[card['value']], suit: card['suit'].downcase }
       end
       data
+    end
+
+    def draw_from_player(params)
+      response = HTTParty.get("https://deckofcardsapi.com/api/deck/#{params[:game_id]}/pile/#{params[:playerName]}/draw/?cards=#{params[:card]['code']}")
+      response['cards'] if response['success']
+    end
+
+    def sort_card(params)
+      response = get_cards(params)
+      response.each do |card|
+        next unless card['value'] == RANK.invert[params[:rank]]
+
+        card = draw_from_player({ game_id: params[:game_id], playerName: params[:playerName], card: card })
+        return card
+      end
+      nil
+    end
+
+    def fish(params)
+      sorted_card = sort_card( { game_id: params[:game_id], playerName: params[:player], rank: params[:rank] })
+      card = sorted_card.nil? ? draw_card_from_deck({ game_id: params[:game_id], count: 1 }) : sorted_card
+      response = add_to_pile({ player: params[:playerName], game_id: params[:game_id], cards: card })
+      return unless response['success']
+
+      {
+          catch: true,
+          cards: [
+              {
+                  suit: card[0]['suit'],
+                  rank: RANK[card[0]['value']]
+              }
+          ]
+      }
     end
   end
 end

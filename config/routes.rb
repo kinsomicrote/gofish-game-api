@@ -3,7 +3,9 @@ Rails.application.routes.draw do
   namespace :api, defaults: { format: :json } do
     namespace :v1 do
       resources :games, only: %i[create] do
-        resources :players, only: %i[show], param: :playerName
+        resources :players, only: %i[show], param: :playerName do
+          post :fish, on: :member
+        end
       end
     end
   end
